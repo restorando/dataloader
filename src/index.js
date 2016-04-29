@@ -81,30 +81,36 @@ export default class DataLoader<K, V> {
     var cacheKey = cacheKeyFn ? cacheKeyFn(key) : key;
 
     // If caching and there is a cache-hit, return cached Promise.
+    var cachedPromise = Promise.resolve();
     if (shouldCache) {
-      var cachedPromise = this._promiseCache.get(cacheKey);
-      if (cachedPromise) {
-        return cachedPromise;
+      var cachedData = this._promiseCache.get(cacheKey);
+      if (cachedData) {
+        cachedPromise = cachedData;
       }
     }
 
     // Otherwise, produce a new Promise for this value.
-    var promise = new Promise((resolve, reject) => {
-      // Enqueue this Promise to be dispatched.
-      this._queue.push({ key, resolve, reject });
-
-      // Determine if a dispatch of this queue should be scheduled.
-      // A single dispatch should be scheduled per queue at the time when the
-      // queue changes from "empty" to "full".
-      if (this._queue.length === 1) {
-        if (shouldBatch) {
-          // If batching, schedule a task to dispatch the queue.
-          enqueuePostPromiseJob(() => dispatchQueue(this));
-        } else {
-          // Otherwise dispatch the (queue of one) immediately.
-          dispatchQueue(this);
-        }
+    var promise = cachedPromise.then( value => {
+      if (value) {
+        return cachedPromise;
       }
+      return new Promise((resolve, reject) => {
+        // Enqueue this Promise to be dispatched.
+        this._queue.push({ key, resolve, reject });
+
+        // Determine if a dispatch of this queue should be scheduled.
+        // A single dispatch should be scheduled per queue at the time when the
+        // queue changes from "empty" to "full".
+        if (this._queue.length === 1) {
+          if (shouldBatch) {
+            // If batching, schedule a task to dispatch the queue.
+            enqueuePostPromiseJob(() => dispatchQueue(this));
+          } else {
+            // Otherwise dispatch the (queue of one) immediately.
+            dispatchQueue(this);
+          }
+        }
+      });
     });
 
     // If caching, cache this promise.
